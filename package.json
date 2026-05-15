@@ -1,0 +1,17 @@
+{
+  "name": "openstream",
+  "version": "1.0.0",
+  "description": "Self-hosted streaming app for Smart TVs. Browse and stream movies/shows with a TV-optimized UI.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "deploy": "scp server.js package.json .env public/ $REMOTE_HOST:~/openstream/"
+  },
+  "keywords": ["streaming", "smart-tv", "hls", "tmdb"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}

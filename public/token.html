@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StreamoTV - Token</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0B0D13; color:#e8e8e8; font-family:-apple-system,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+.card { background:#13151d; border-radius:16px; padding:32px; max-width:420px; width:90%; border:1px solid rgba(255,255,255,0.06); }
+h1 { font-size:22px; margin-bottom:8px; color:#818cf8; }
+p { color:#8b8fa3; font-size:14px; line-height:1.5; margin-bottom:20px; }
+#status { padding:14px; border-radius:10px; font-size:15px; font-weight:600; text-align:center; margin-bottom:16px; }
+.ok { background:rgba(34,197,94,0.1); color:#22c55e; border:1px solid rgba(34,197,94,0.2); }
+.warn { background:rgba(234,179,8,0.1); color:#eab308; border:1px solid rgba(234,179,8,0.2); }
+.err { background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.2); }
+#ts-box { display:flex; justify-content:center; margin:16px 0; min-height:70px; }
+.info { font-size:12px; color:#8b8fa3; text-align:center; margin-top:12px; }
+</style>
+</head><body>
+<div class="card">
+<h1>StreamoTV Token</h1>
+<p>Lass diese Seite offen. Token wird automatisch alle 90 Min erneuert.</p>
+<div id="status" class="warn">Initialisiere...</div>
+<div id="ts-box"></div>
+<div class="info" id="info"></div>
+</div>
+<script>
+window.__osConfig = {};
+var cfgXhr = new XMLHttpRequest();
+cfgXhr.open("GET", "/api/config", false);
+cfgXhr.send();
+try { window.__osConfig = JSON.parse(cfgXhr.responseText); } catch(e) {}
+
+var statusEl = document.getElementById("status");
+var infoEl = document.getElementById("info");
+var REFRESH_MS = 90 * 60 * 1000;
+var widgetId = null;
+
+function clearTsBox() {
+  var box = document.getElementById("ts-box");
+  while (box.firstChild) box.removeChild(box.firstChild);
+}
+
+function doRefresh() {
+  statusEl.className = "warn";
+  statusEl.textContent = "Turnstile wird geladen...";
+  clearTsBox();
+
+  function waitForTurnstile(cb) {
+    var start = Date.now();
+    (function poll() {
+      if (window.turnstile && window.turnstile.render) return cb();
+      if (Date.now() - start > 15000) { statusEl.className = "err"; statusEl.textContent = "Turnstile Timeout"; return; }
+      setTimeout(poll, 300);
+    })();
+  }
+
+  waitForTurnstile(function() {
+    statusEl.textContent = "Captcha loesen (falls noetig)...";
+    if (widgetId !== null) { try { turnstile.remove(widgetId); } catch(e) {} }
+    widgetId = turnstile.render("#ts-box", {
+      sitekey: window.__osConfig.turnstileSitekey,
+      callback: function(tsToken) { getMoonlight(tsToken); },
+      "error-callback": function() { statusEl.className = "err"; statusEl.textContent = "Turnstile Fehler - Seite neu laden"; }
+    });
+  });
+}
+
+function getMoonlight(tsToken) {
+  statusEl.textContent = "Hole Token...";
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", window.__osConfig.streamoOrigin + "/api/moonlight-token");
+  xhr.setRequestHeader("Content-Type", "application/json");
+  xhr.onload = function() {
+    try {
+      var d = JSON.parse(xhr.responseText);
+      if (d.token) { saveToken(d.token, d.expiresIn); }
+      else { statusEl.className = "err"; statusEl.textContent = "Fehler: " + (d.error || "unbekannt"); }
+    } catch(e) { statusEl.className = "err"; statusEl.textContent = "Parse-Fehler"; }
+  };
+  xhr.onerror = function() { statusEl.className = "err"; statusEl.textContent = "Netzwerk-Fehler"; };
+  xhr.send(JSON.stringify({ turnstile: tsToken }));
+}
+
+function saveToken(token, expiresIn) {
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/token");
+  xhr.setRequestHeader("Content-Type", "application/json");
+  xhr.onload = function() {
+    try {
+      var d = JSON.parse(xhr.responseText);
+      statusEl.className = "ok";
+      statusEl.textContent = "Token aktiv! " + d.minutes + " Min gueltig";
+      clearTsBox();
+      var next = new Date(Date.now() + REFRESH_MS);
+      infoEl.textContent = "Auto-Refresh: " + next.toLocaleTimeString();
+    } catch(e) { statusEl.textContent = "Speichern fehlgeschlagen"; }
+  };
+  xhr.send(JSON.stringify({ token: token, expiresIn: expiresIn }));
+}
+
+function checkAndMaybeRefresh() {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", "/api/token-status");
+  xhr.onload = function() {
+    try {
+      var d = JSON.parse(xhr.responseText);
+      if (!d.valid || d.minutes < 10) { doRefresh(); }
+      else { statusEl.className = "ok"; statusEl.textContent = "Token aktiv! Noch " + d.minutes + " Min"; }
+    } catch(e) {}
+  };
+  xhr.send();
+}
+
+// Init
+var xhr0 = new XMLHttpRequest();
+xhr0.open("GET", "/api/token-status");
+xhr0.onload = function() {
+  try {
+    var d = JSON.parse(xhr0.responseText);
+    if (d.valid && d.minutes > 10) {
+      statusEl.className = "ok";
+      statusEl.textContent = "Token aktiv! Noch " + d.minutes + " Min";
+      var next = new Date(Date.now() + REFRESH_MS);
+      infoEl.textContent = "Auto-Refresh: " + next.toLocaleTimeString();
+    } else { doRefresh(); }
+  } catch(e) { doRefresh(); }
+};
+xhr0.onerror = function() { doRefresh(); };
+xhr0.send();
+
+setInterval(checkAndMaybeRefresh, 60000);
+setInterval(doRefresh, REFRESH_MS);
+</script>
+</body></html>
