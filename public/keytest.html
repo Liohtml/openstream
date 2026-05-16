@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Key Test</title>
+<style>
+body { background:#0B0D13; color:#e8e8e8; font-family:monospace; font-size:24px; padding:40px; }
+#log { white-space:pre-wrap; line-height:1.8; }
+h1 { color:#6366f1; margin-bottom:20px; }
+.key { background:#1a1d28; padding:4px 12px; border-radius:6px; color:#fbbf24; }
+</style>
+</head><body>
+<h1>VIDAA Key Test</h1>
+<p>Druecke Tasten auf der Fernbedienung:</p>
+<div id="log"></div>
+<script>
+var log = document.getElementById('log');
+var count = 0;
+
+document.onkeydown = function(e) {
+  count++;
+  var line = document.createElement('div');
+  line.textContent = count + '. keyCode=' + e.keyCode + ' key="' + e.key + '" code="' + (e.code||'') + '" which=' + e.which;
+  log.insertBefore(line, log.firstChild);
+  if (count > 20) log.removeChild(log.lastChild);
+  e.preventDefault();
+  return false;
+};
+
+document.onkeyup = function(e) { e.preventDefault(); return false; };
+</script>
+</body></html>
